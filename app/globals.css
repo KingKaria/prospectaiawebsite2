@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — ProspectAIA
+ * Paleta aprovada a partir da análise da logótipo (cyan -> violeta sobre
+ * fundo quase-preto). Ver conversa de aprovação da identidade visual.
+ */
+@theme {
+  /* Superfícies (tema escuro é a base do site) */
+  --color-background: #05070d;
+  --color-surface: #0d1220;
+  --color-surface-2: #10162a;
+  --color-background-light: #f8fafc;
+  --color-surface-light: #ffffff;
+
+  /* Marca */
+  --color-cyan: #22d3ee;
+  --color-cyan-strong: #1ab8d1;
+  --color-violet: #6d5ce8;
+  --color-violet-strong: #5a49c9;
+  --color-violet-accent: #8b5cf6;
+
+  /* Texto */
+  --color-foreground: #f8fafc;
+  --color-foreground-muted: #94a3b8;
+  --color-foreground-subtle: #64748b;
+  --color-foreground-on-light: #0f172a;
+  --color-foreground-on-light-muted: #475569;
+
+  /* Bordas */
+  --color-border: #1e293b;
+  --color-border-strong: #334155;
+  --color-border-on-light: #e2e8f0;
+
+  /* Semântica (reservado para formulários/feedback futuro) */
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+
+  /* Tipografia */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Breakpoint extra para ajustes finos em telemóveis pequenos */
+  --breakpoint-xs: 26rem;
+
+  --radius-card: 1rem;
+
+  /* Movimento */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  ::selection {
+    background: var(--color-violet);
+    color: var(--color-foreground);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
