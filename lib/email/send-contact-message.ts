@@ -66,11 +66,23 @@ export async function sendContactMessage(
 
   if (!apiKey || !from || !to) {
     // Configuração em falta é um erro de deployment, não do utilizador —
-    // registado como sinal técnico (sem valores), devolve falha genérica.
+    // registado como sinal técnico. A chave nunca é impressa (só o seu
+    // comprimento); from/to não são segredos (já são públicos no site e
+    // nos cabeçalhos de qualquer email enviado), por isso são úteis aqui
+    // para apanhar erros de configuração (nome trocado, valor colado com
+    // a chave incluída, espaços, etc.).
+    // TODO(diagnóstico temporário): remover depois de confirmada a causa
+    // do "missing_config" em produção.
     console.error("[contact] configuração de email em falta", {
       hasApiKey: Boolean(apiKey),
       hasFrom: Boolean(from),
       hasTo: Boolean(to),
+      valueLengthApiKey: apiKey ? apiKey.length : 0,
+      fromValue: from ?? null,
+      toValue: to ?? null,
+      nodeEnv: process.env.NODE_ENV ?? null,
+      vercelEnv: process.env.VERCEL_ENV ?? null,
+      vercelUrl: process.env.VERCEL_URL ?? null,
     });
     return { ok: false, reason: "missing_config" };
   }
