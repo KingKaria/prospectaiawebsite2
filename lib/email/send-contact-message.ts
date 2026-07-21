@@ -1,4 +1,3 @@
-import { Resend } from "resend";
 import { siteConfig } from "@/lib/constants";
 import type { ContactMessageInput } from "@/lib/validations/contact";
 
@@ -11,25 +10,30 @@ export type SendContactMessageInput = ContactMessageInput;
 
 export type SendContactMessageResult = { ok: true } | { ok: false; reason: string };
 
+const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
+
 // Assunto controlado exclusivamente pelo servidor — nunca vem do cliente.
 // Derivado de siteConfig.name para manter a marca consistente com o resto
 // do site (ProspectAIA), em vez de uma string escrita à mão.
 const CONTACT_SUBJECT = `Novo pedido de contacto — ${siteConfig.name}`;
 
-/**
- * Constrói o corpo do email em texto simples. Texto (não HTML) elimina
- * por construção qualquer risco de injeção de HTML/XSS no conteúdo do
- * utilizador. Campos opcionais só aparecem quando preenchidos. O IP
- * nunca é incluído — é dado pessoal sem utilidade para responder ao
- * pedido (minimização, RGPD art. 5.º/1/c).
- */
-function buildEmailText(input: SendContactMessageInput): string {
-  const receivedAt = new Intl.DateTimeFormat("pt-PT", {
-    dateStyle: "long",
-    timeStyle: "short",
-    timeZone: "Europe/Lisbon",
-  }).format(new Date());
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
+function escapeHtmlMultiline(value: string): string {
+  return escapeHtml(value).replace(/\n/g, "<br>");
+}
+
+/**
+ * Constrói o corpo do email em texto simples.
+ */
+function buildEmailText(input: SendContactMessageInput, receivedAt: string): string {
   const lines = [
     `Nome: ${input.name}`,
     `Empresa: ${input.company}`,
@@ -43,65 +47,104 @@ function buildEmailText(input: SendContactMessageInput): string {
 }
 
 /**
- * Adaptador de envio da mensagem de contacto, agora com Resend real.
+ * Constrói o corpo do email em HTML. Todos os campos vindos do utilizador
+ * são escapados (escapeHtml/escapeHtmlMultiline) antes de entrarem no
+ * markup, para eliminar qualquer risco de injeção de HTML no conteúdo.
+ */
+function buildEmailHtml(input: SendContactMessageInput, receivedAt: string): string {
+  const rows = [
+    `<p><strong>Nome:</strong> ${escapeHtml(input.name)}</p>`,
+    `<p><strong>Empresa:</strong> ${escapeHtml(input.company)}</p>`,
+    `<p><strong>Email:</strong> ${escapeHtml(input.email)}</p>`,
+  ];
+  if (input.phone) rows.push(`<p><strong>Telefone:</strong> ${escapeHtml(input.phone)}</p>`);
+  if (input.website) rows.push(`<p><strong>Website:</strong> ${escapeHtml(input.website)}</p>`);
+  rows.push(`<p><strong>Mensagem:</strong><br>${escapeHtmlMultiline(input.message)}</p>`);
+  rows.push(
+    `<p style="color:#666;font-size:12px;">Recebido em: ${escapeHtml(receivedAt)} (hora de Lisboa)</p>`
+  );
+
+  return rows.join("\n");
+}
+
+type BrevoErrorBody = { code?: unknown; message?: unknown };
+
+/**
+ * Adaptador de envio da mensagem de contacto via API Transactional Email
+ * do Brevo (https://api.brevo.com/v3/smtp/email).
  *
  * Garantias de segurança:
- * - destinatário (to) e remetente (from) vêm SEMPRE de variáveis de
+ * - destinatário (to) e remetente (sender) vêm SEMPRE de variáveis de
  *   ambiente do servidor, nunca do payload do cliente;
  * - o assunto é uma constante do servidor;
  * - o único dado do visitante usado em campos de envelope é o email
- *   validado pelo schema, e apenas como reply-to;
- * - a API key vive só no servidor (RESEND_API_KEY, nunca NEXT_PUBLIC_);
+ *   validado pelo schema, e apenas como replyTo;
+ * - a API key vive só no servidor (BREVO_API_KEY, nunca NEXT_PUBLIC_) e
+ *   nunca é escrita em logs;
  * - os logs nunca incluem dados pessoais completos, só sinais técnicos.
  *
- * A assinatura mantém-se idêntica à da simulação anterior, por isso a
+ * A assinatura mantém-se idêntica à do adaptador anterior, por isso a
  * Server Action e o formulário não precisam de mudar.
  */
 export async function sendContactMessage(
   input: SendContactMessageInput
 ): Promise<SendContactMessageResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.CONTACT_EMAIL_FROM;
+  const apiKey = process.env.BREVO_API_KEY;
+  const fromEmail = process.env.CONTACT_EMAIL_FROM;
+  const fromName = process.env.CONTACT_EMAIL_FROM_NAME;
   const to = process.env.CONTACT_EMAIL_TO;
 
-  if (!apiKey || !from || !to) {
+  if (!apiKey || !fromEmail || !fromName || !to) {
     // Configuração em falta é um erro de deployment, não do utilizador —
-    // registado como sinal técnico. A chave nunca é impressa (só o seu
-    // comprimento); from/to não são segredos (já são públicos no site e
-    // nos cabeçalhos de qualquer email enviado), por isso são úteis aqui
-    // para apanhar erros de configuração (nome trocado, valor colado com
-    // a chave incluída, espaços, etc.).
-    // TODO(diagnóstico temporário): remover depois de confirmada a causa
-    // do "missing_config" em produção.
+    // registado como sinal técnico (sem valores), devolve falha genérica.
     console.error("[contact] configuração de email em falta", {
       hasApiKey: Boolean(apiKey),
-      hasFrom: Boolean(from),
+      hasFromEmail: Boolean(fromEmail),
+      hasFromName: Boolean(fromName),
       hasTo: Boolean(to),
-      valueLengthApiKey: apiKey ? apiKey.length : 0,
-      fromValue: from ?? null,
-      toValue: to ?? null,
-      nodeEnv: process.env.NODE_ENV ?? null,
-      vercelEnv: process.env.VERCEL_ENV ?? null,
-      vercelUrl: process.env.VERCEL_URL ?? null,
     });
     return { ok: false, reason: "missing_config" };
   }
 
+  const receivedAt = new Intl.DateTimeFormat("pt-PT", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "Europe/Lisbon",
+  }).format(new Date());
+
   try {
-    const resend = new Resend(apiKey);
-    const { error } = await resend.emails.send({
-      from,
-      to,
-      replyTo: input.email,
-      subject: CONTACT_SUBJECT,
-      text: buildEmailText(input),
+    const response = await fetch(BREVO_API_URL, {
+      method: "POST",
+      headers: {
+        "api-key": apiKey,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify({
+        sender: { name: fromName, email: fromEmail },
+        to: [{ email: to }],
+        replyTo: { email: input.email },
+        subject: CONTACT_SUBJECT,
+        htmlContent: buildEmailHtml(input, receivedAt),
+        textContent: buildEmailText(input, receivedAt),
+      }),
     });
 
-    if (error) {
-      // error.name é um código técnico do Resend (ex. "validation_error"),
-      // nunca conteúdo do utilizador — seguro registar.
-      console.error("[contact] Resend devolveu erro", { name: error.name });
-      return { ok: false, reason: error.name };
+    if (!response.ok) {
+      let reason = `http_${response.status}`;
+      try {
+        const body: BrevoErrorBody = await response.json();
+        if (typeof body.code === "string" && body.code.length > 0) {
+          reason = body.code;
+        }
+      } catch {
+        // Corpo de erro não é JSON válido — mantém o código HTTP genérico.
+      }
+      // body.code é um código técnico do Brevo (ex. "invalid_parameter"),
+      // nunca conteúdo do utilizador — seguro registar. body.message nunca
+      // é lido/registado, para não arriscar expor detalhe interno.
+      console.error("[contact] Brevo devolveu erro", { status: response.status, reason });
+      return { ok: false, reason };
     }
 
     console.log("[contact] mensagem enviada", {
@@ -112,7 +155,7 @@ export async function sendContactMessage(
     return { ok: true };
   } catch (error) {
     console.error(
-      "[contact] exceção ao enviar via Resend",
+      "[contact] exceção ao enviar via Brevo",
       error instanceof Error ? error.name : "erro desconhecido"
     );
     return { ok: false, reason: "send_exception" };
