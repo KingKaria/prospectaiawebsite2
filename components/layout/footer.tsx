@@ -36,7 +36,9 @@ export function Footer() {
             <li>
               <Link href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</Link>
             </li>
-            <li>{siteConfig.contactPhone}</li>
+            <li>
+              <Link href={`tel:${siteConfig.contactPhoneHref}`}>{siteConfig.contactPhone}</Link>
+            </li>
           </ul>
         </div>
 

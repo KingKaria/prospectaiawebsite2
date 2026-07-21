@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
-import { siteConfig } from "@/lib/constants";
+import { WhatsAppButton } from "@/components/layout/whatsapp-button";
+import { siteConfig, homeTitle, homeDescription } from "@/lib/constants";
+import { GlobalJsonLd } from "@/components/seo/global-json-ld";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,10 +20,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   title: {
-    default: `${siteConfig.name} — ${siteConfig.tagline}`,
+    default: homeTitle,
     template: `%s | ${siteConfig.name}`,
   },
-  description: siteConfig.description,
+  description: homeDescription,
   openGraph: {
     siteName: siteConfig.name,
     locale: siteConfig.locale,
@@ -48,9 +50,11 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-background text-foreground">
+        <GlobalJsonLd />
         <Header />
         <main className="flex-1">{children}</main>
         <Footer />
+        <WhatsAppButton />
       </body>
     </html>
   );

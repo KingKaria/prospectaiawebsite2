@@ -9,6 +9,7 @@ const routes = [
   "/contacto",
   "/politica-de-privacidade",
   "/termos-e-condicoes",
+  "/cookies",
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

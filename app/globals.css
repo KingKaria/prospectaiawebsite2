@@ -79,6 +79,34 @@
   }
 }
 
+/* Feixes de convergência e nó de oportunidade do elemento visual da Hero. */
+@keyframes hero-flow {
+  to {
+    /* -13 = 2x o comprimento do padrão do traço (2.5 + 4), loop sem salto. */
+    stroke-dashoffset: -13;
+  }
+}
+
+.animate-hero-flow {
+  animation: hero-flow 6s linear infinite;
+}
+
+@keyframes hero-pulse {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 1;
+  }
+}
+
+.animate-hero-pulse {
+  animation: hero-pulse 4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

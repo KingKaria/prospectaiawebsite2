@@ -3,6 +3,7 @@ import { Container } from "@/components/ui/container";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Card } from "@/components/ui/card";
 import { ContactForm } from "@/components/forms/contact-form";
+import { Link } from "@/components/ui/link";
 import { buildMetadata } from "@/lib/metadata";
 import { siteConfig } from "@/lib/constants";
 
@@ -18,7 +19,7 @@ export default function ContactoPage() {
       <SectionHeading
         eyebrow="Contacto"
         title="Vamos falar sobre o seu crescimento comercial"
-        description="Preencha o formulário ou contacte-nos diretamente. Os dados de contacto abaixo são provisórios."
+        description="Preencha o formulário ou contacte-nos diretamente."
       />
 
       <div className="grid gap-8 lg:grid-cols-[1.2fr_1fr]">
@@ -29,11 +30,15 @@ export default function ContactoPage() {
         <Card className="flex flex-col gap-4 text-sm text-foreground-muted">
           <div>
             <p className="text-foreground font-medium">Email</p>
-            <p>{siteConfig.contactEmail}</p>
+            <p>
+              <Link href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</Link>
+            </p>
           </div>
           <div>
             <p className="text-foreground font-medium">Telefone</p>
-            <p>{siteConfig.contactPhone}</p>
+            <p>
+              <Link href={`tel:${siteConfig.contactPhoneHref}`}>{siteConfig.contactPhone}</Link>
+            </p>
           </div>
         </Card>
       </div>

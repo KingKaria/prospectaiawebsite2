@@ -14,4 +14,5 @@ export const mainNav: NavItem[] = [
 export const footerLegalNav: NavItem[] = [
   { label: "Política de privacidade", href: "/politica-de-privacidade" },
   { label: "Termos e condições", href: "/termos-e-condicoes" },
+  { label: "Política de cookies", href: "/cookies" },
 ];
