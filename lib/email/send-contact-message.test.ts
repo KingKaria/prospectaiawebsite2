@@ -2,9 +2,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { siteConfig } from "@/lib/constants";
 import { sendContactMessage, type SendContactMessageInput } from "@/lib/email/send-contact-message";
 
-const API_KEY = "brevo_test_key_not_real";
-const FROM_EMAIL = "contacto@mail.prospectaia.pt";
-const FROM_NAME = "ProspectAIA";
+// Mock hasteado do SDK do Resend — nenhum teste toca na rede. `sendMock`
+// é a função que substitui `resend.emails.send`; `ResendMock` é o
+// construtor, para podermos verificar que é instanciado com a API key.
+const { sendMock, ResendMock } = vi.hoisted(() => {
+  const sendMock = vi.fn();
+  // Implementação com `function` (não arrow) para poder ser usada como
+  // construtor via `new Resend(...)` no vitest 4 — uma arrow function
+  // lançaria TypeError ao ser instanciada.
+  const ResendMock = vi.fn(function (this: { emails: { send: typeof sendMock } }) {
+    this.emails = { send: sendMock };
+  });
+  return { sendMock, ResendMock };
+});
+
+vi.mock("resend", () => ({ Resend: ResendMock }));
+
+const API_KEY = "re_test_key_not_real";
+const FROM = "ProspectAIA <contacto@mail.prospectaia.pt>";
 const TO = "contacto@prospectaia.pt";
 
 const validInput: SendContactMessageInput = {
@@ -16,30 +31,18 @@ const validInput: SendContactMessageInput = {
   message: "Gostaria de saber mais sobre os vossos serviços de prospeção comercial B2B.",
 };
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-const fetchMock = vi.fn();
-
 beforeEach(() => {
-  fetchMock.mockReset();
-  vi.stubGlobal("fetch", fetchMock);
-  process.env.BREVO_API_KEY = API_KEY;
-  process.env.CONTACT_EMAIL_FROM = FROM_EMAIL;
-  process.env.CONTACT_EMAIL_FROM_NAME = FROM_NAME;
+  sendMock.mockReset();
+  ResendMock.mockClear();
+  process.env.RESEND_API_KEY = API_KEY;
+  process.env.CONTACT_EMAIL_FROM = FROM;
   process.env.CONTACT_EMAIL_TO = TO;
 });
 
 afterEach(() => {
-  delete process.env.BREVO_API_KEY;
+  delete process.env.RESEND_API_KEY;
   delete process.env.CONTACT_EMAIL_FROM;
-  delete process.env.CONTACT_EMAIL_FROM_NAME;
   delete process.env.CONTACT_EMAIL_TO;
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -52,155 +55,129 @@ describe("sendContactMessage — contrato de tipos", () => {
 });
 
 describe("sendContactMessage — sucesso", () => {
-  it("devolve { ok: true } quando o Brevo confirma o envio (201)", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { messageId: "brevo-id" }));
+  it("devolve { ok: true } quando o Resend confirma o envio", async () => {
+    sendMock.mockResolvedValue({ data: { id: "email-id" }, error: null });
     const result = await sendContactMessage(validInput);
     expect(result).toEqual({ ok: true });
   });
 
-  it("chama o endpoint correto da API Transactional do Brevo", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { messageId: "brevo-id" }));
+  it("instancia o Resend com a API key do ambiente", async () => {
+    sendMock.mockResolvedValue({ data: { id: "email-id" }, error: null });
     await sendContactMessage(validInput);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.brevo.com/v3/smtp/email",
-      expect.objectContaining({ method: "POST" })
-    );
+    expect(ResendMock).toHaveBeenCalledWith(API_KEY);
   });
 
-  it("envia os headers exigidos, incluindo a api-key do ambiente", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { messageId: "brevo-id" }));
-    await sendContactMessage(validInput);
-    const [, requestInit] = fetchMock.mock.calls[0];
-    expect(requestInit.headers).toEqual({
-      "api-key": API_KEY,
-      "content-type": "application/json",
-      accept: "application/json",
-    });
-  });
-
-  it("inclui os campos opcionais no corpo (texto e HTML) apenas quando preenchidos", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { messageId: "x" }));
+  it("inclui os campos opcionais no corpo apenas quando preenchidos", async () => {
+    sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
     await sendContactMessage({ ...validInput, phone: "+351 912 345 678", website: "https://empresa.pt" });
-    const [, requestInit] = fetchMock.mock.calls[0];
-    const payload = JSON.parse(requestInit.body);
-    expect(payload.textContent).toContain("Telefone: +351 912 345 678");
-    expect(payload.textContent).toContain("Website: https://empresa.pt");
-    expect(payload.htmlContent).toContain("+351 912 345 678");
-    expect(payload.htmlContent).toContain("https://empresa.pt");
+    const payload = sendMock.mock.calls[0][0];
+    expect(payload.text).toContain("Telefone: +351 912 345 678");
+    expect(payload.text).toContain("Website: https://empresa.pt");
   });
 
   it("omite as linhas de telefone/website quando ausentes", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { messageId: "x" }));
+    sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
     await sendContactMessage(validInput);
-    const [, requestInit] = fetchMock.mock.calls[0];
-    const payload = JSON.parse(requestInit.body);
-    expect(payload.textContent).not.toContain("Telefone:");
-    expect(payload.textContent).not.toContain("Website:");
-    expect(payload.htmlContent).not.toContain("Telefone:");
-    expect(payload.htmlContent).not.toContain("Website:");
-  });
-
-  it("escapa HTML no conteúdo do utilizador, para não permitir injeção de markup", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { messageId: "x" }));
-    await sendContactMessage({
-      ...validInput,
-      name: "<script>alert(1)</script>",
-      message: "linha um\nlinha <b>dois</b>",
-    });
-    const [, requestInit] = fetchMock.mock.calls[0];
-    const payload = JSON.parse(requestInit.body);
-    expect(payload.htmlContent).not.toContain("<script>");
-    expect(payload.htmlContent).toContain("&lt;script&gt;");
-    expect(payload.htmlContent).toContain("linha um<br>linha &lt;b&gt;dois&lt;/b&gt;");
-    // O texto simples não escapa nada — é enviado tal e qual.
-    expect(payload.textContent).toContain("<script>alert(1)</script>");
+    const payload = sendMock.mock.calls[0][0];
+    expect(payload.text).not.toContain("Telefone:");
+    expect(payload.text).not.toContain("Website:");
   });
 });
 
 describe("sendContactMessage — segurança dos campos de envelope", () => {
-  it("usa sempre o sender e o to do ambiente, controlados pelo servidor", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { messageId: "x" }));
+  it("usa sempre o to e o from do ambiente, controlados pelo servidor", async () => {
+    sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
     await sendContactMessage(validInput);
-    const [, requestInit] = fetchMock.mock.calls[0];
-    const payload = JSON.parse(requestInit.body);
-    expect(payload.sender).toEqual({ name: FROM_NAME, email: FROM_EMAIL });
-    expect(payload.to).toEqual([{ email: TO }]);
+    const payload = sendMock.mock.calls[0][0];
+    expect(payload.from).toBe(FROM);
+    expect(payload.to).toBe(TO);
   });
 
-  it("usa o email validado do visitante apenas como replyTo", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { messageId: "x" }));
+  it("usa o email validado do visitante apenas como reply-to", async () => {
+    sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
     await sendContactMessage(validInput);
-    const [, requestInit] = fetchMock.mock.calls[0];
-    const payload = JSON.parse(requestInit.body);
-    expect(payload.replyTo).toEqual({ email: validInput.email });
+    const payload = sendMock.mock.calls[0][0];
+    expect(payload.replyTo).toBe(validInput.email);
     // O email do visitante nunca é usado como remetente.
-    expect(payload.sender.email).not.toBe(validInput.email);
+    expect(payload.from).not.toBe(validInput.email);
   });
 
   it("usa um assunto fixo controlado pelo servidor, baseado na marca", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { messageId: "x" }));
+    sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
     await sendContactMessage(validInput);
-    const [, requestInit] = fetchMock.mock.calls[0];
-    const payload = JSON.parse(requestInit.body);
+    const payload = sendMock.mock.calls[0][0];
     expect(payload.subject).toBe(`Novo pedido de contacto — ${siteConfig.name}`);
+  });
+
+  it("não define headers nem tags a partir da entrada", async () => {
+    sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
+    await sendContactMessage(validInput);
+    const payload = sendMock.mock.calls[0][0];
+    expect(payload.headers).toBeUndefined();
+    expect(payload.tags).toBeUndefined();
   });
 });
 
 describe("sendContactMessage — erros", () => {
-  it("devolve falha com o código de erro do Brevo, sem a mensagem interna", async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse(400, { code: "invalid_parameter", message: "detalhe interno sensível" })
-    );
+  it("devolve falha com o código de erro do Resend, sem a mensagem interna", async () => {
+    sendMock.mockResolvedValue({
+      data: null,
+      error: { name: "rate_limit_exceeded", message: "detalhe interno sensível", statusCode: 429 },
+    });
     const result = await sendContactMessage(validInput);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toBe("invalid_parameter");
+      expect(result.reason).toBe("rate_limit_exceeded");
       expect(result.reason).not.toContain("detalhe interno sensível");
     }
   });
 
-  it("devolve um código genérico baseado no status HTTP quando o corpo de erro não é JSON válido", async () => {
-    fetchMock.mockResolvedValue(
-      new Response("<html>gateway error</html>", { status: 502, headers: { "content-type": "text/html" } })
-    );
-    const result = await sendContactMessage(validInput);
-    expect(result).toEqual({ ok: false, reason: "http_502" });
-  });
-
-  it("devolve send_exception quando a chamada ao Brevo rejeita, sem propagar a exceção", async () => {
-    fetchMock.mockRejectedValue(new Error("stack trace interno"));
+  it("devolve send_exception quando a chamada ao Resend rejeita, sem propagar a exceção", async () => {
+    sendMock.mockRejectedValue(new Error("stack trace interno sensível"));
     const result = await sendContactMessage(validInput);
     expect(result).toEqual({ ok: false, reason: "send_exception" });
   });
+});
 
-  it("devolve missing_config e não chama o Brevo quando falta a API key", async () => {
-    delete process.env.BREVO_API_KEY;
-    const result = await sendContactMessage(validInput);
-    expect(result).toEqual({ ok: false, reason: "missing_config" });
-    expect(fetchMock).not.toHaveBeenCalled();
+describe("sendContactMessage — trim seguro da configuração", () => {
+  it("string undefined em qualquer variável → missing_config, sem chamar o Resend", async () => {
+    delete process.env.RESEND_API_KEY;
+    expect(await sendContactMessage(validInput)).toEqual({ ok: false, reason: "missing_config" });
+    expect(sendMock).not.toHaveBeenCalled();
   });
 
-  it("devolve missing_config quando falta o remetente (email ou nome) ou o destinatário", async () => {
-    delete process.env.CONTACT_EMAIL_FROM;
-    const resultNoFromEmail = await sendContactMessage(validInput);
-    expect(resultNoFromEmail).toEqual({ ok: false, reason: "missing_config" });
+  it("string vazia em qualquer variável → missing_config, sem chamar o Resend", async () => {
+    process.env.CONTACT_EMAIL_FROM = "";
+    expect(await sendContactMessage(validInput)).toEqual({ ok: false, reason: "missing_config" });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
 
-    process.env.CONTACT_EMAIL_FROM = FROM_EMAIL;
-    delete process.env.CONTACT_EMAIL_FROM_NAME;
-    const resultNoFromName = await sendContactMessage(validInput);
-    expect(resultNoFromName).toEqual({ ok: false, reason: "missing_config" });
+  it("string só com espaços em qualquer variável → missing_config, sem chamar o Resend", async () => {
+    process.env.CONTACT_EMAIL_TO = "   ";
+    expect(await sendContactMessage(validInput)).toEqual({ ok: false, reason: "missing_config" });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
 
-    process.env.CONTACT_EMAIL_FROM_NAME = FROM_NAME;
-    delete process.env.CONTACT_EMAIL_TO;
-    const resultNoTo = await sendContactMessage(validInput);
-    expect(resultNoTo).toEqual({ ok: false, reason: "missing_config" });
-    expect(fetchMock).not.toHaveBeenCalled();
+  it("string com espaços à volta de um valor válido não bloqueia — é aparada antes de usar", async () => {
+    process.env.CONTACT_EMAIL_TO = `  ${TO}  `;
+    sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
+
+    const result = await sendContactMessage(validInput);
+
+    expect(result).toEqual({ ok: true });
+    expect(sendMock.mock.calls[0][0].to).toBe(TO);
+  });
+
+  it("as três variáveis válidas e sem espaços → chama resend.emails.send", async () => {
+    sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
+    await sendContactMessage(validInput);
+    expect(sendMock).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("sendContactMessage — logging sem PII", () => {
   it("não escreve nome, email nem mensagem nos logs de sucesso", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { messageId: "x" }));
+    sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await sendContactMessage(validInput);
     const loggedText = JSON.stringify(logSpy.mock.calls.flat());
@@ -209,22 +186,33 @@ describe("sendContactMessage — logging sem PII", () => {
     expect(loggedText).not.toContain(validInput.message);
   });
 
-  it("não escreve dados pessoais nem a API key no log de erro do Brevo", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(400, { code: "validation_error", message: "x" }));
+  it("não escreve dados pessoais no log de erro do Resend", async () => {
+    sendMock.mockResolvedValue({
+      data: null,
+      error: { name: "validation_error", message: "x", statusCode: 400 },
+    });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     await sendContactMessage(validInput);
     const loggedText = JSON.stringify(errorSpy.mock.calls.flat());
     expect(loggedText).not.toContain(validInput.name);
     expect(loggedText).not.toContain(validInput.email);
     expect(loggedText).not.toContain(validInput.message);
-    expect(loggedText).not.toContain(API_KEY);
   });
 
-  it("nunca inclui a API key em nenhum log, mesmo em caso de exceção", async () => {
-    fetchMock.mockRejectedValue(new Error("stack trace interno"));
+  it("nunca inclui a API key em nenhum log — sucesso, erro ou exceção", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    sendMock.mockResolvedValue({ data: { id: "x" }, error: null });
     await sendContactMessage(validInput);
-    const loggedText = JSON.stringify(errorSpy.mock.calls.flat());
+
+    sendMock.mockResolvedValue({ data: null, error: { name: "validation_error", message: "x" } });
+    await sendContactMessage(validInput);
+
+    sendMock.mockRejectedValue(new Error("stack trace interno"));
+    await sendContactMessage(validInput);
+
+    const loggedText = JSON.stringify([...logSpy.mock.calls.flat(), ...errorSpy.mock.calls.flat()]);
     expect(loggedText).not.toContain(API_KEY);
   });
 });

@@ -167,7 +167,7 @@ export function toFieldErrors(error: z.ZodError): ContactFormFieldErrors {
 
 /**
  * Contrato de resultado da futura Server Action. Estável desde já —
- * adicionar o envio real (Brevo) não deve exigir alterar esta forma,
+ * adicionar o envio real (Resend) não deve exigir alterar esta forma,
  * só preencher os ramos "success"/"technical_error"/"rate_limited" com
  * lógica real. "technical_error" e "config_error" são distinguidos
  * internamente (para logging), mas devem ser apresentados ao utilizador
