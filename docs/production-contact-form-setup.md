@@ -1,9 +1,9 @@
 # Configuração de produção do formulário de contacto
 
 Este documento descreve os passos manuais necessários para ativar em
-produção o envio real de email (Resend) e o rate limiting persistente
+produção o envio real de email (Brevo) e o rate limiting persistente
 (Upstash Redis) do formulário de contacto. Nenhum destes passos foi
-executado por mim — todos requerem login em contas de terceiros (Resend,
+executado por mim — todos requerem login em contas de terceiros (Brevo,
 Upstash, Vercel), que só o responsável pelo projeto pode fazer.
 
 Nenhuma chave, token ou segredo real deve alguma vez ser escrito neste
@@ -13,43 +13,43 @@ versionado no Git. Os valores reais vivem exclusivamente em `.env.local`
 
 ## Variáveis de ambiente necessárias
 
-Estes são os 6 nomes exatos lidos pelo código (confirmados por inspeção
+Estes são os 7 nomes exatos lidos pelo código (confirmados por inspeção
 direta do código-fonte, não assumidos):
 
 | Variável | Ficheiro que a lê | Propósito |
 |---|---|---|
-| `RESEND_API_KEY` | `lib/email/send-contact-message.ts` | Autenticação com a API do Resend |
-| `CONTACT_EMAIL_FROM` | `lib/email/send-contact-message.ts` | Remetente do email (controlado pelo servidor) |
+| `BREVO_API_KEY` | `lib/email/send-contact-message.ts` | Autenticação com a API Transactional do Brevo |
+| `CONTACT_EMAIL_FROM` | `lib/email/send-contact-message.ts` | Email do remetente (controlado pelo servidor) |
+| `CONTACT_EMAIL_FROM_NAME` | `lib/email/send-contact-message.ts` | Nome de exibição do remetente |
 | `CONTACT_EMAIL_TO` | `lib/email/send-contact-message.ts` | Destinatário do email (controlado pelo servidor) |
 | `UPSTASH_REDIS_REST_URL` | `lib/rate-limit/check-rate-limit.ts` | Endpoint REST do Upstash Redis |
 | `UPSTASH_REDIS_REST_TOKEN` | `lib/rate-limit/check-rate-limit.ts` | Token de autenticação do Upstash Redis |
 | `CONTACT_RATE_LIMIT_SECRET` | `app/contacto/actions.ts` | Segredo HMAC-SHA-256 para pseudonimizar o IP |
 
 Valores de configuração já decididos e aprovados:
-- Remetente: `ProspectAIA <contacto@mail.prospectaia.pt>` — subdomínio
-  dedicado ao envio, isolado do domínio principal.
+- Remetente: email `contacto@mail.prospectaia.pt`, nome `ProspectAIA` —
+  subdomínio dedicado ao envio, isolado do domínio principal.
 - Destinatário: `contacto@prospectaia.pt` — endereço público de receção,
   no domínio principal.
 
-## Passo 1 — Resend
+## Passo 1 — Brevo
 
-1. Cria uma conta em [resend.com](https://resend.com) (ação manual, não
+1. Cria uma conta em [brevo.com](https://www.brevo.com) (ação manual, não
    automatizável a partir daqui).
-2. No dashboard do Resend, vai a **Domains → Add Domain** e regista
-   `mail.prospectaia.pt` (o subdomínio, não `prospectaia.pt`).
-3. O Resend mostra um conjunto de registos DNS para verificação —
-   tipicamente:
-   - um ou mais registos `TXT` (SPF/verificação de propriedade);
-   - um ou mais registos `CNAME` (DKIM);
-   - por vezes um registo `MX` para tratamento de bounces (varia consoante
-     a configuração do Resend; segue exatamente o que o dashboard mostrar).
+2. No dashboard do Brevo, vai a **Senders, Domains & Dedicated IPs →
+   Domains** e adiciona `mail.prospectaia.pt` (o subdomínio, não
+   `prospectaia.pt`).
+3. O Brevo mostra um conjunto de registos DNS para autenticação —
+   tipicamente registos `TXT` (SPF/verificação, DKIM) e por vezes um
+   `CNAME` — segue exatamente o que o dashboard mostrar.
 4. Adiciona esses registos na Zona DNS da Hostinger, para o subdomínio
    `mail` (não no domínio raiz `@`). **Este passo não foi feito por mim**
    — o DNS não foi alterado nesta fase.
-5. Espera a verificação do domínio no dashboard do Resend (passa a
-   "Verified"/✓).
-6. Cria uma API Key em **API Keys → Create API Key**. Copia o valor —
-   só é mostrado uma vez.
+5. Espera a verificação do domínio no dashboard do Brevo.
+6. Adiciona também o endereço `contacto@mail.prospectaia.pt` em
+   **Senders** (remetente autorizado a enviar).
+7. Cria uma API Key em **Settings → API Keys → Generate a new API key**.
+   Copia o valor — só é mostrado uma vez.
 
 ## Passo 2 — Upstash Redis
 
@@ -93,7 +93,7 @@ openssl rand -hex 32
    ```
    cp .env.example .env.local
    ```
-2. Substitui os 6 valores ilustrativos pelos valores reais obtidos nos
+2. Substitui os 7 valores ilustrativos pelos valores reais obtidos nos
    passos 1-3.
 3. `.env.local` **nunca** é commitado — já está coberto pela regra
    `.env*` no `.gitignore` (confirmado nesta sessão).
@@ -101,7 +101,7 @@ openssl rand -hex 32
 ### Na Vercel (produção)
 
 1. No projeto `prospectaiawebsite2` → **Settings → Environment Variables**.
-2. Adiciona as mesmas 6 variáveis, uma a uma, com os valores reais.
+2. Adiciona as mesmas 7 variáveis, uma a uma, com os valores reais.
 3. Aplica-as ao ambiente **Production** (e a **Preview**/**Development**
    se quiseres testar em deployments de pré-visualização).
 4. Depois de guardar todas, é necessário um **novo deployment** para as
@@ -115,7 +115,7 @@ Antes de qualquer envio real:
 1. Corre `npm run build` localmente com `.env.local` preenchido, para
    confirmar que a aplicação arranca sem erros de configuração.
 2. Usa os testes automatizados existentes (`npx vitest run`) — já cobrem
-   os cenários de configuração em falta, erro do Resend, erro do Upstash,
+   os cenários de configuração em falta, erro do Brevo, erro do Upstash,
    fail-open, etc., todos com mocks, sem tocar em serviços reais.
 3. Só depois de confirmares que queres mesmo testar um envio real,
    pede confirmação explícita antes de submeteres o formulário em
@@ -124,7 +124,7 @@ Antes de qualquer envio real:
 
 ## O que este documento não cobre (fora de âmbito)
 
-- Criação de contas Resend/Upstash — só o responsável pelo projeto pode
+- Criação de contas Brevo/Upstash — só o responsável pelo projeto pode
   fazer login e criar essas contas.
 - Alteração de registos DNS — mencionada como passo necessário, mas não
   executada a partir daqui.

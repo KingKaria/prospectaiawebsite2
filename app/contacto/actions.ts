@@ -34,7 +34,7 @@ function readString(formData: FormData, key: string): string {
  *
  * Ordem das portas (uma submissão suspeita nunca passa da porta que a
  * apanha, por isso nunca chega ao schema de contacto, ao adaptador, ao
- * Resend, nem a qualquer log com dados pessoais):
+ * Brevo, nem a qualquer log com dados pessoais):
  *
  *   1. extrair apenas os campos autorizados;
  *   2. honeypot            → sucesso aparente se suspeito;
@@ -43,7 +43,7 @@ function readString(formData: FormData, key: string): string {
  *   5. rate limiting       → "rate_limited" se excedido (fail-open se o
  *      identificador ou o Upstash não estiverem disponíveis);
  *   6. validar os campos de contacto;
- *   7. chamar o adaptador de email (Resend);
+ *   7. chamar o adaptador de email (Brevo);
  *   8. devolver o resultado.
  *
  * O rate limiting corre depois do honeypot e da janela temporal, de
