@@ -33,6 +33,7 @@ const segments = [
     title: "Startups",
     challenge: "Poucos canais de aquisição validados e orçamento limitado para testar todos.",
     approach: "Ajudamos a validar e priorizar os canais com maior probabilidade de gerar clientes iniciais.",
+    href: "/solucoes/startups",
   },
   {
     icon: UserCheck,
