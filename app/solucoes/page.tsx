@@ -26,6 +26,7 @@ const segments = [
     title: "Empresas B2B",
     challenge: "Ciclos de venda mais longos e decisores difíceis de identificar e alcançar.",
     approach: "Estruturamos a prospeção em torno do ciclo de decisão real da empresa-alvo, não de um contacto único.",
+    href: "/solucoes/empresas-b2b",
   },
   {
     icon: Rocket,
