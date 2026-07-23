@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { Building2, Briefcase, Rocket, UserCheck } from "lucide-react";
+import { Building2, Briefcase, Rocket, UserCheck, ArrowRight } from "lucide-react";
 import { Container } from "@/components/ui/container";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
+import { Link } from "@/components/ui/link";
 import { buildMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = buildMetadata({
@@ -18,6 +19,7 @@ const segments = [
     title: "PME",
     challenge: "Equipas comerciais pequenas, sem tempo disponível para prospeção sistemática.",
     approach: "Implementamos um processo de prospeção que não depende de contratar mais pessoas para funcionar.",
+    href: "/solucoes/pme",
   },
   {
     icon: Briefcase,
@@ -70,6 +72,15 @@ export default function SolucoesPage() {
                   <span className="text-foreground">Como ajudamos: </span>
                   {segment.approach}
                 </p>
+                {segment.href ? (
+                  <Link
+                    href={segment.href}
+                    className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium"
+                  >
+                    Ver solução completa para {segment.title}
+                    <Icon icon={ArrowRight} size={14} />
+                  </Link>
+                ) : null}
               </div>
             </div>
           </div>
